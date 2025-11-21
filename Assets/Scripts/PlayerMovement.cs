@@ -10,8 +10,35 @@ public class PlayerMovement : MonoBehaviour
     
     void Start()
     {
-        // Lock cursor to center of screen
-        Cursor.lockState = CursorLockMode.Locked;
+        // disable if VR is active.
+        if (GameObject.Find("XR Origin") != null)
+        {
+            this.enabled = false;
+            Debug.Log("PlayerMovement: VR detected (XR Origin found), disabling keyboard/mouse movement. XR Interaction Toolkit will handle movement.");
+            return;
+        }
+        
+        try
+        {
+            var xrSettingsType = System.Type.GetType("UnityEngine.XR.XRSettings, UnityEngine.XRModule");
+            if (xrSettingsType != null)
+            {
+                var enabledProperty = xrSettingsType.GetProperty("enabled");
+                if (enabledProperty != null)
+                {
+                    bool xrEnabled = (bool)enabledProperty.GetValue(null);
+                    if (xrEnabled)
+                    {
+                        this.enabled = false;
+                        return;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // XR not available, continue with normal movement
+        }
     }
     
     void Update()
