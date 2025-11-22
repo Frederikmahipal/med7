@@ -1,8 +1,8 @@
 using UnityEngine;
 
 /// AudioController manages audio for the overstimulation system.
-/// - Background noise: Loops continuously, but gets QUIETER as stress increases (ducking effect)
-/// - Rising sound: Volume/intensity INCREASES with overstimulation level (takes over)
+/// - Background noise: Loops continuously, but gets quieter as stress increases (ducking effect)
+/// - Rising sound: Volume/intensity increases with overstimulation level (takes over)
 
 public class AudioController : MonoBehaviour
 {
@@ -78,17 +78,13 @@ public class AudioController : MonoBehaviour
         risingAudioSource.volume = 0f; // Start silent
         risingAudioSource.playOnAwake = false;
         
-        // Start playing rising sound (it will be silent at first)
+        // Start playing rising sound (silent at start)
         if (risingSound != null)
         {
             risingAudioSource.Play();
         }
-        else
-        {
-            Debug.LogWarning("AudioController: No rising sound assigned! Rising audio won't play.");
-        }
+   
     }
-
     void Update()
     {
         if (overstimulationController != null)
@@ -99,26 +95,38 @@ public class AudioController : MonoBehaviour
             // Update RISING SOUND: Gets louder as stress increases
             if (risingSound != null)
             {
-                // Level 0.0 → risingMinVolume, Level 1.0 → risingMaxVolume
+                // Mathf.Lerp(start, end, percentage) = calculates a value between start and end
+                // If overstimulationLevel = 0.0 -> returns risingMinVolume (0.0 = silent)
+                // If overstimulationLevel = 1.0 -> returns risingMaxVolume (0.8 = 80% volume)
+                // If overstimulationLevel = 0.5 -> returns halfway between min and max (0.4 = 40% volume)
                 float targetRisingVolume = Mathf.Lerp(risingMinVolume, risingMaxVolume, overstimulationLevel);
                 
-                // Smoothly transition to target volume (prevents jarring audio jumps)
+                // Smoothly move current volume towards target volume
+                // Time.deltaTime = time since last frame (usually ~0.016 seconds)
+                // volumeSmoothing * Time.deltaTime = how fast to move (2.0 * 0.016 = 0.032 = 3.2% per frame)
+                // This prevents sudden jumps - volume changes gradually over time
                 currentRisingVolume = Mathf.Lerp(currentRisingVolume, targetRisingVolume, volumeSmoothing * Time.deltaTime);
                 risingAudioSource.volume = currentRisingVolume;
                 
-                // Level 0.0 → pitch 1.0 (normal), Level 1.0 → risingMaxPitch
+                // Calculate pitch (how high/low the sound is)
+                // If overstimulationLevel = 0.0 -> pitch = 1.0 (normal speed/pitch)
+                // If overstimulationLevel = 1.0 -> pitch = 1.2 (20% faster/higher pitch)
+                // Higher pitch = more intense/urgent feeling
                 float targetPitch = Mathf.Lerp(1f, risingMaxPitch, overstimulationLevel);
                 risingAudioSource.pitch = targetPitch;
             }
             
-            // Update BACKGROUND SOUND: Gets quieter as stress increases 
+            // Background sound gets quieter as stress increases 
             if (backgroundSound != null && backgroundAudioSource != null)
             {
-                
-                // Level 0.0 → backgroundMaxVolume (loud), Level 1.0 → backgroundMinVolume (quiet)
+                // Calculate target volume - INVERSE of stress (opposite of rising sound)
+                // If overstimulationLevel = 0.0 -> returns backgroundMaxVolume (0.5 = 50% volume, loud)
+                // If overstimulationLevel = 1.0 -> returns backgroundMinVolume (0.1 = 10% volume, quiet)
+                // As stress increases, background gets quieter (ducking effect)
                 float targetBackgroundVolume = Mathf.Lerp(backgroundMaxVolume, backgroundMinVolume, overstimulationLevel);
                 
-                // Smoothly transition to target volume
+                // Smoothly move current volume towards target volume (same as rising sound)
+                // Prevents sudden volume jumps - changes gradually
                 currentBackgroundVolume = Mathf.Lerp(currentBackgroundVolume, targetBackgroundVolume, volumeSmoothing * Time.deltaTime);
                 backgroundAudioSource.volume = currentBackgroundVolume;
             }

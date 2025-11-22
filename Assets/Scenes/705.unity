@@ -10647,6 +10647,7 @@ GameObject:
   - component: {fileID: 729252699}
   - component: {fileID: 729252698}
   - component: {fileID: 729252700}
+  - component: {fileID: 729252701}
   m_Layer: 0
   m_Name: OverStimulationController
   m_TagString: Untagged
@@ -10666,16 +10667,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: afd0fc080926540f69c857633058c6cb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  overstimulationLevel: 0.503
-  threshold: 0.5
-  fastIncreaseSpeed: 0.1
-  slowIncreaseSpeed: 0.05
-  decreaseSpeed: 0.2
-  testIncreaseKey: 116
-  testDecreaseKey: 121
-  lampController: {fileID: 0}
-  cameraDisturbance: {fileID: 0}
-  activeTriggers: 0
 --- !u!4 &729252699
 Transform:
   m_ObjectHideFlags: 0
@@ -10708,8 +10699,29 @@ MonoBehaviour:
   fastIncreaseSpeed: 0.1
   slowIncreaseSpeed: 0.05
   decreaseSpeed: 0.1
-  testIncreaseKey: 116
-  testDecreaseKey: 121
+--- !u!114 &729252701
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 729252697}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d1adbb9ff0264f568b182e299923f1d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  backgroundAudioSource: {fileID: 0}
+  risingAudioSource: {fileID: 0}
+  backgroundSound: {fileID: 8300000, guid: 0ba3a81893e264ce58e92b8ddbb72769, type: 3}
+  backgroundMaxVolume: 0.5
+  backgroundMinVolume: 0.1
+  risingSound: {fileID: 8300000, guid: 58b6b12bd88874257aac075acf77e5e5, type: 3}
+  risingMinVolume: 0
+  risingMaxVolume: 0.8
+  risingMaxPitch: 1.2
+  risingSoundLoops: 1
+  volumeSmoothing: 2
 --- !u!1001 &731708759
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -18044,7 +18056,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 2, y: 1, z: 2}
+  m_Size: {x: 5, y: 1, z: 2}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!4 &1185608078
 Transform:
