@@ -59,6 +59,12 @@ public class AudioController : MonoBehaviour
         // Find the OverstimulationController
         overstimulationController = FindObjectOfType<OverstimulationController>();
         
+        // Auto-create background audio source if not assigned
+        if (backgroundAudioSource == null)
+        {
+            backgroundAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+        
         // Setup background audio
         backgroundAudioSource.clip = backgroundSound;
         backgroundAudioSource.loop = true;
@@ -72,6 +78,12 @@ public class AudioController : MonoBehaviour
             backgroundAudioSource.Play();
         }
       
+        // Auto-create rising audio source if not assigned
+        if (risingAudioSource == null)
+        {
+            risingAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+        
         // Setup rising audio
         risingAudioSource.clip = risingSound;
         risingAudioSource.loop = risingSoundLoops;
@@ -93,7 +105,7 @@ public class AudioController : MonoBehaviour
             float overstimulationLevel = overstimulationController.GetLevel();
             
             // Update RISING SOUND: Gets louder as stress increases
-            if (risingSound != null)
+            if (risingSound != null && risingAudioSource != null)
             {
                 // Mathf.Lerp(start, end, percentage) = calculates a value between start and end
                 // If overstimulationLevel = 0.0 -> returns risingMinVolume (0.0 = silent)
