@@ -126,7 +126,7 @@ public class TriggerZone : MonoBehaviour
             }
             else // ZoneType.Decrease
             {
-                // Player left a calm zone - add a trigger back
+                // Player left a calm zone add a trigger back
                 // This will cause the overstimulation level to start increasing again
                 if (overstimulationController != null)
                 {
