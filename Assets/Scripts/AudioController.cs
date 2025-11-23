@@ -104,7 +104,7 @@ public class AudioController : MonoBehaviour
             // Get current overstimulation level (0.0 to 1.0)
             float overstimulationLevel = overstimulationController.GetLevel();
             
-            // Update RISING SOUND: Gets louder as stress increases
+            // Gets louder as stress increases
             if (risingSound != null && risingAudioSource != null)
             {
                 // Mathf.Lerp(start, end, percentage) = calculates a value between start and end
