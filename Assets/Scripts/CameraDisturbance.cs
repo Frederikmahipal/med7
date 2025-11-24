@@ -36,17 +36,10 @@ public class CameraDisturbance : MonoBehaviour
         // This allows the script to work when attached directly to a camera
         mainCamera = GetComponent<Camera>();
 
-        // Fallback: if no camera on this object, use the main camera
-        if (mainCamera == null)
-        {
-            mainCamera = Camera.main;
-        }
 
         // Create the UI overlay system that will display the flash effect
-        // We do this in Start() so it's ready before Update() runs
         CreateFlashOverlay();
 
-        // Setup blur effect
         SetupBlur();
     }
 
@@ -68,23 +61,21 @@ public class CameraDisturbance : MonoBehaviour
         canvas.sortingOrder = 1000;
 
         // CanvasScaler makes the UI scale properly on different screen sizes
-        // Without this, the overlay might not cover the full screen on different resolutions
         CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080); // Reference resolution for scaling
 
         // GraphicRaycaster is needed for the Canvas to work properly
-        // It handles input/raycasting for UI elements (even though we don't use it)
         canvasObj.AddComponent<GraphicRaycaster>();
         
 
-        // Create the actual flash overlay - a white image that covers the screen
+        // Create the actual flash overlay
         GameObject flashObj = new GameObject("FlashOverlay");
         flashObj.transform.SetParent(canvas.transform, false);
 
         // Image component displays a colored rectangle
         flashOverlay = flashObj.AddComponent<Image>();
-        flashOverlay.color = new Color(1, 1, 1, 0); // White color, fully transparent (alpha = 0)
+        flashOverlay.color = new Color(1, 1, 1, 0); // White color, fully transparent
 
         // Create a radial gradient texture for vignette effect
         // This makes the flash only appear at the edges, not the center
@@ -146,7 +137,6 @@ public class CameraDisturbance : MonoBehaviour
     void SetupBlur()
     {
         // Blur will be applied automatically via OnRenderImage callback
-        // No setup needed
     }
 
     /// Unity callback that processes the camera's rendered image.
@@ -169,10 +159,6 @@ public class CameraDisturbance : MonoBehaviour
         pulseIntensity = Mathf.Pow(pulseIntensity, 1.5f);
 
         // Scale the blur intensity based on the current overstimulation level
-        // Example: if currentLevel = 0.5 and maxBlurIntensity = 2.0:
-        //   currentBlur = 0.5 * 2.0 * pulseIntensity = 1.0 * pulseIntensity
-        // At level 1.0: currentBlur = 2.0 * pulseIntensity (full blur)
-        // At level 0.0: currentBlur = 0 (no blur)
         float currentBlur = currentLevel * maxBlurIntensity * pulseIntensity;
 
         if (currentBlur > 0.1f) // Only apply blur if intensity is significant

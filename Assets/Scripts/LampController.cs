@@ -21,13 +21,11 @@ public class LampController : MonoBehaviour
     private List<LampIntensity> allLamps = new List<LampIntensity>();
     
     // Current overstimulation level (0.0 to 1.0)
-    // This is set by OverstimulationController
     private float currentLevel = 0f;
     
     void Start()
     {
-        // Find all lamp objects in the scene and add intensity control components to them
-        // This happens once at the start so we have all lamps ready to control
+
         FindAllLamps();
     }
     
@@ -47,7 +45,6 @@ public class LampController : MonoBehaviour
             if (obj.name.Contains("SM_CeilingLamp_") && obj.name != "SM_CeilingLamp")
             {
                 // Check if this lamp already has a LampIntensity component
-                // This prevents adding duplicate components if the script executes more than once
                 LampIntensity lamp = obj.GetComponent<LampIntensity>();
 
                 if (lamp == null)
@@ -116,8 +113,7 @@ public class LampController : MonoBehaviour
                 if (maxLampsInFocus < 0)
                 {
                     // Affect ALL lamps, but scale intensity by level
-                    // At level 1.0, all lamps are at max brightness
-                    // At level 0.5, all lamps are at 50% brightness
+  
                     allLamps[i].SetOverstimulationLevel(currentLevel);
                 }
                 else

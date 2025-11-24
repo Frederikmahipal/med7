@@ -75,7 +75,7 @@ public class TriggerZone : MonoBehaviour
             // Apply the zone effect based on the zone type
             if (zoneType == ZoneType.Increase)
             {
-                // This is an overstimulation zone - tell manager to add a trigger
+                // This is an overstimulation zone - tell controller to add a trigger
                 // This will cause the overstimulation level to start increasing
                 if (overstimulationController != null)
                 {
@@ -88,22 +88,13 @@ public class TriggerZone : MonoBehaviour
             }
             else 
             {
-                // This is a calm zone - tell manager to remove a trigger
+                // This is a calm zone - tell controller to remove a trigger
                 // This will cause the overstimulation level to start decreasing
                 if (overstimulationController != null)
                 {
                     overstimulationController.RemoveTrigger(zoneName);
                 }
-                else
-                {
-                    Debug.LogError($"TriggerZone '{zoneName}': OverstimulationController is null!");
-                }
             }
-        }
-        else
-        {
-            Debug.LogWarning($"TriggerZone '{zoneName}': Object '{other.name}' entered but doesn't have tag '{playerTag}'. " +
-                           $"Make sure your player GameObject has the '{playerTag}' tag!");
         }
     }
 

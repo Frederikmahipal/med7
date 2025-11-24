@@ -66,14 +66,6 @@ public class OverstimulationController : MonoBehaviour
                     // Create CameraDisturbance on the player's camera
                     cameraDisturbance = playerCamera.gameObject.AddComponent<CameraDisturbance>();
                 }
-                else
-                {
-                    Debug.LogError($"OverstimulationController: Player GameObject '{playerObj.name}' found but has no Camera component! CameraDisturbance won't work.");
-                }
-            }
-            else
-            {
-                Debug.LogError("OverstimulationController: No GameObject with 'Player' tag found! CameraDisturbance won't work.");
             }
         }
     }
@@ -137,15 +129,7 @@ public class OverstimulationController : MonoBehaviour
     {
         // Tell LampController about the current level
         // It will make lamps brighter based on this value (0.0 = normal, 1.0 = max brightness)
-        if (lampController != null)
-        {
-            lampController.SetOverstimulationLevel(overstimulationLevel);
-        }
-        else
-        {
-            // LampController is missing - effects won't work
-            // Warning is logged once at Start, no need to spam every second
-        }
+        lampController?.SetOverstimulationLevel(overstimulationLevel);
 
         // Tell CameraDisturbance about the current level
         // It will make blur/flash stronger based on this value
@@ -184,15 +168,12 @@ public class OverstimulationController : MonoBehaviour
     }
 
     /// Call this when a trigger becomes inactive (e.g., player leaves queue zone).
-    /// Use the same name you used in AddTrigger.
-    /// Example: RemoveTrigger("QueueZone") when player leaves queue
     public void RemoveTrigger(string triggerName)
     {
         activeTriggers = Mathf.Max(0, activeTriggers - 1); // Can't go below 0
     }
 
     /// Get the current overstimulation level (0.0 to 1.0).
-    /// Other scripts can read this if they need to know the level.
     public float GetLevel()
     {
         return overstimulationLevel;

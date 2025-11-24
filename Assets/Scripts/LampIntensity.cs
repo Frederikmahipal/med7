@@ -254,7 +254,6 @@ public class LampIntensity : MonoBehaviour
         // Store the level (clamp to 0-1 range to be safe)
         currentLevel = Mathf.Clamp01(level);
         
-        // The Update() method will use this level to adjust brightness automatically
     }
 }
 

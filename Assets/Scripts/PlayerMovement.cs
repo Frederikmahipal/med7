@@ -14,7 +14,6 @@ public class PlayerMovement : MonoBehaviour
         if (GameObject.Find("XR Origin") != null)
         {
             this.enabled = false;
-            Debug.Log("PlayerMovement: VR detected (XR Origin found), disabling keyboard/mouse movement. XR Interaction Toolkit will handle movement.");
             return;
         }
         
