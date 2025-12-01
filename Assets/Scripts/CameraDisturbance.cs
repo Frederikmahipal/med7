@@ -1,194 +1,243 @@
 using UnityEngine;
-using UnityEngine.UI;
 
-/// CameraDisturbance creates a visual flash overlay effect on the screen that syncs with lamp blinking.
-/// This simulates overstimulation by adding visual disturbance to the player's view.
-/// The effect uses a UI Canvas with a white overlay image that pulses in sync with the lamps.
+// CameraDisturbance creates a visual vignette overlay effect in VR that syncs with lamp blinking.
+// This simulates overstimulation by adding visual disturbance to the player's view in VR.
 
 public class CameraDisturbance : MonoBehaviour
 {
-    [Header("Flash/Vignette Settings")]
-    [Tooltip("Maximum flash intensity when overstimulation is at 100% (1.0). Lower values = more subtle effect. Range 0-1.")]
-    public float maxFlashIntensity = 0.1f;
+    [Header("Vignette Settings")]
+    [Tooltip("Maximum flash intensity when overstimulation is at 100% (1.0). Lower = less intense.")]
+    public float maxFlashIntensity = 2.0f;
 
     [Tooltip("How fast the flash pulses (in seconds). Should match the lamp pulse speed for synchronization.")]
     public float flashSpeed = 0.5f;
 
     [Tooltip("How much of the screen the vignette covers. Higher = more edge coverage. Range 0-1.")]
-    public float vignetteSize = 0.3f;
-
-    [Header("Blur Settings")]
-    [Tooltip("Maximum blur intensity when overstimulation is at 100% (1.0). Higher = more blur.")]
-    public float maxBlurIntensity = 2f;
-
-    [Tooltip("How much of the screen to blur (0-1).")]
-    public float blurCoverage = 0.5f; // 0.5 = blur half the screen
+    public float vignetteSize = 0.95f; // Set to 0.95f for very tight vignette, only small center visible 
 
     private Camera mainCamera;
     private float currentLevel = 0f; // Current overstimulation level (0.0 to 1.0)
+    private float adaptationMultiplier = 1.0f;
     private float timer = 0f;
-    private Image flashOverlay; // The white image that covers the screen
-    private Canvas canvas; // The UI canvas that holds the overlay
+    private OverstimulationController overstimulationController;
+    
+    // VR overlay, quad mesh for each eye
+    private GameObject vrOverlayQuadLeft;
+    private GameObject vrOverlayQuadRight;
+    private Material vrOverlayMaterial;
+    private Texture2D vignetteTexture;
+
+    void Awake()
+    {
+        // Force GameObject to be active if it's inactive
+        if (!gameObject.activeSelf)
+        {
+            gameObject.SetActive(true);
+        }
+        
+        // Force script to be enabled
+        if (!enabled)
+        {
+            enabled = true;
+        }
+    }
 
     void Start()
     {
-        // Get reference to the camera component on this GameObject
-        // This allows the script to work when attached directly to a camera
-        mainCamera = GetComponent<Camera>();
+        // Find OverstimulationController to get adaptation multiplier
+        overstimulationController = FindObjectOfType<OverstimulationController>();
 
-
-        // Create the UI overlay system that will display the flash effect
-        CreateFlashOverlay();
-
-        SetupBlur();
+        Camera[] allCameras = FindObjectsOfType<Camera>();
+        
+        // Log all cameras to verify we find the right one
+        Debug.LogError($"CameraDisturbance: Found {allCameras.Length} camera(s) in scene:");
+        for (int i = 0; i < allCameras.Length; i++)
+        {
+            Camera cam = allCameras[i];
+            string parentName = cam.transform.parent != null ? cam.transform.parent.name : "None";
+            string grandParentName = cam.transform.parent != null && cam.transform.parent.parent != null 
+                ? cam.transform.parent.parent.name : "None";
+            Debug.LogError($"CameraDisturbance: Camera[{i}] - Name={cam.name}, Tag={cam.tag}, Depth={cam.depth}, " +
+                $"TargetEye={cam.stereoTargetEye}, Parent={parentName}, GrandParent={grandParentName}");
+        }
+        
+        // Find the VR camera (the one under XR Origin)
+        Camera vrCamera = null;
+        
+        foreach (Camera cam in allCameras)
+        {
+            // Look for camera with MainCamera tag that has "Camera Offset" as parent
+            if (cam.tag == "MainCamera" && cam.transform.parent != null && 
+                cam.transform.parent.name == "Camera Offset")
+            {
+                vrCamera = cam;
+                Debug.LogError($"CameraDisturbance: Found VR camera! Name={cam.name}, Tag={cam.tag}, Parent={cam.transform.parent.name}, TargetEye={cam.stereoTargetEye}, Depth={cam.depth}, Near={cam.nearClipPlane}");
+                break;
+            }
+        }
+        
+        if (vrCamera != null)
+        {
+            mainCamera = vrCamera;
+            Debug.LogError($"CameraDisturbance: Using VR camera: {mainCamera.name}, TargetEye={mainCamera.stereoTargetEye}, Near={mainCamera.nearClipPlane}");
+            
+            // CRITICAL FIX: Set Near Clip Plane to 0.01 so objects close to camera render
+            // Default is often 0.3 (30cm), which would cull our overlay at 1cm!
+            if (mainCamera.nearClipPlane > 0.01f)
+            {
+                Debug.LogError($"CameraDisturbance: Near Clip Plane was {mainCamera.nearClipPlane}, setting to 0.01 for VR overlay!");
+                mainCamera.nearClipPlane = 0.01f;
+            }
+        }
+        else
+        {
+            // Fallback to camera on this GameObject
+            mainCamera = GetComponent<Camera>();
+            string fallbackName = mainCamera != null ? mainCamera.name : "NULL";
+            Debug.LogError($"CameraDisturbance: VR camera not found! Using fallback camera: {fallbackName}");
+        }
+        
+        if (mainCamera == null)
+        {
+            Debug.LogError($"CameraDisturbance: No Camera component found! GameObject={gameObject.name}");
+            enabled = false;
+            return;
+        }
+        
+        // Create VR overlay
+        Debug.LogError($"CameraDisturbance: Creating VR overlay, Camera={mainCamera.name}");
+        CreateVROverlayForBothEyes();
     }
 
-
-    /// Creates a UI Canvas and Image overlay to display the flash effect.
-    /// The canvas is set to ScreenSpaceOverlay so it renders on top of everything.
-    void CreateFlashOverlay()
+    // Creates VR overlay - separate quad mesh for each eye
+    void CreateVROverlayForBothEyes()
     {
-        // Create a new GameObject to hold the Canvas component
-        GameObject canvasObj = new GameObject("FlashCanvas");
-        canvas = canvasObj.AddComponent<Canvas>();
+        // Create vignette texture
+        vignetteTexture = CreateVignetteTexture(512, 512);
         
-        // ScreenSpaceOverlay means the canvas renders on top of the 3D scene
-        // This ensures our flash effect appears above everything else
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-
-        // High sorting order ensures this canvas renders on top of any other UI
-        // This prevents other UI elements from covering our flash effect
-        canvas.sortingOrder = 1000;
-
-        // CanvasScaler makes the UI scale properly on different screen sizes
-        CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080); // Reference resolution for scaling
-
-        // GraphicRaycaster is needed for the Canvas to work properly
-        canvasObj.AddComponent<GraphicRaycaster>();
+        // Find Shader
+        Shader shader = Shader.Find("Unlit/Transparent");
+        if (shader == null) shader = Shader.Find("UI/Unlit/Transparent");
+        if (shader == null) shader = Shader.Find("Sprites/Default");
         
+        if (shader == null)
+        {
+            return;
+        }
+        
+        // Setup Material
+        vrOverlayMaterial = new Material(shader);
+        vrOverlayMaterial.mainTexture = vignetteTexture;
+        vrOverlayMaterial.color = new Color(1, 1, 1, 0f); 
+        
+        //  Force material to render on top of everything
+        vrOverlayMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        vrOverlayMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        vrOverlayMaterial.SetInt("_ZWrite", 0); 
+        vrOverlayMaterial.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always); // Always draw on top
+        vrOverlayMaterial.renderQueue = 5000; // Overlay queue (renders very late)
+        
+        // Calculate distance and scale
+        float distance = 0.35f; 
+        
+        float fov = mainCamera.fieldOfView * Mathf.Deg2Rad;
+        // Multiply by 1.5f to ensure edges are fully covered even if eyes rotate slightly
+        float width = 2f * distance * Mathf.Tan(fov / 2f) * 1.5f; 
+        float height = width * (mainCamera.pixelHeight / (float)mainCamera.pixelWidth);
+        
+        Vector3 quadScale = new Vector3(width, height, 1f);
+        
+        // Create quad for left eye
+        vrOverlayQuadLeft = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        vrOverlayQuadLeft.name = "VROverlayQuad_LeftEye";
+        vrOverlayQuadLeft.transform.SetParent(mainCamera.transform, false);
+        vrOverlayQuadLeft.transform.localPosition = new Vector3(0, 0, distance); 
+        vrOverlayQuadLeft.transform.localRotation = Quaternion.identity;
+        vrOverlayQuadLeft.transform.localScale = quadScale;
+        
+        // Setup Renderer (Left)
+        ConfigureQuadRenderer(vrOverlayQuadLeft);
 
-        // Create the actual flash overlay
-        GameObject flashObj = new GameObject("FlashOverlay");
-        flashObj.transform.SetParent(canvas.transform, false);
+        // Create quad for right eye
+        vrOverlayQuadRight = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        vrOverlayQuadRight.name = "VROverlayQuad_RightEye";
+        vrOverlayQuadRight.transform.SetParent(mainCamera.transform, false);
+        vrOverlayQuadRight.transform.localPosition = new Vector3(0, 0, distance);
+        vrOverlayQuadRight.transform.localRotation = Quaternion.identity;
+        vrOverlayQuadRight.transform.localScale = quadScale;
+        
+        // Setup Renderer (Right)
+        ConfigureQuadRenderer(vrOverlayQuadRight);
+        
+        Debug.Log($"CameraDisturbance: VR overlay created! Dist={distance}, Scale={quadScale}");
+    }
 
-        // Image component displays a colored rectangle
-        flashOverlay = flashObj.AddComponent<Image>();
-        flashOverlay.color = new Color(1, 1, 1, 0); // White color, fully transparent
-
-        // Create a radial gradient texture for vignette effect
-        // This makes the flash only appear at the edges, not the center
-        Texture2D vignetteTexture = CreateVignetteTexture(256, 256);
-        Sprite vignetteSprite = Sprite.Create(vignetteTexture, new Rect(0, 0, 256, 256), new Vector2(0.5f, 0.5f));
-        flashOverlay.sprite = vignetteSprite;
-        flashOverlay.type = Image.Type.Simple; // Use simple image type
-
-        // Configure the RectTransform to cover the entire screen
-        RectTransform rect = flashOverlay.rectTransform;
-        rect.anchorMin = Vector2.zero; // Anchor to bottom-left
-        rect.anchorMax = Vector2.one;  // Anchor to top-right
-        rect.sizeDelta = Vector2.zero;
-        rect.anchoredPosition = Vector2.zero;
+    // Helper function to avoid code duplication
+    void ConfigureQuadRenderer(GameObject quad)
+    {
+        MeshRenderer meshRenderer = quad.GetComponent<MeshRenderer>();
+        meshRenderer.material = vrOverlayMaterial;
+        quad.layer = mainCamera.gameObject.layer;
+        quad.SetActive(true);
+        meshRenderer.enabled = true;
+        meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+        if(quad.GetComponent<Collider>()) Destroy(quad.GetComponent<Collider>());
     }
 
     void Update()
     {
-        // Only update the flash effect if level is above 0 and the overlay exists
-        if (currentLevel > 0.001f && flashOverlay != null)
+        // VR: Update material color for vignette effect
+        if (vrOverlayMaterial != null)
         {
-            // Increment timer by the time since last frame
-            timer += Time.deltaTime;
+            // Calculate vignette intensity based on overstimulation level
+            if (currentLevel > 0.001f)
+            {
+                // Get adaptation multiplier to adjust pulse speed
+                if (overstimulationController != null)
+                {
+                    adaptationMultiplier = overstimulationController.GetAdaptationMultiplier();
+                }
 
-            // Calculate flash intensity using a sine wave
-            // This creates a smooth, repeating pulse pattern
-            float t = timer / flashSpeed;
+                // Calculate pulse intensity
+                timer += Time.deltaTime;
 
-            // Mathf.Sin(t * Mathf.PI * 2) gives values from -1 to 1
-            // Multiplying by PI*2 makes one complete cycle (0 to 2π radians)
-            // * 0.5f + 0.5f converts the range from [-1, 1] to [0, 1]
-            // This gives us a smooth curve that goes from 0 to 1 and back
-            float pulseIntensity = Mathf.Sin(t * Mathf.PI * 2) * 0.5f + 0.5f;
-
-            // Mathf.Pow makes the curve less linear
-            pulseIntensity = Mathf.Pow(pulseIntensity, 1.5f);
-
-            // Scale the flash intensity based on the current overstimulation level
-            // 
-            // At level 1.0: flashAmount = 0.1 * pulseIntensity (full intensity)
-            // At level 0.0: flashAmount = 0 (no flash)
-            float flashAmount = currentLevel * maxFlashIntensity * pulseIntensity;
-
-            // Update the overlay's transparency
-            Color flashColor = flashOverlay.color;
-            flashColor.a = flashAmount; // Set alpha to our calculated flash amount
-            flashOverlay.color = flashColor; // Apply the new color
-        }
-        else if (flashOverlay != null)
-        {
-            // When level is 0, smoothly fade out the overlay
-            Color flashColor = flashOverlay.color;
-            flashColor.a = Mathf.Lerp(flashColor.a, 0, Time.deltaTime * 2f);
-            flashOverlay.color = flashColor;
-        }
-    }
-
-
-    void SetupBlur()
-    {
-        // Blur will be applied automatically via OnRenderImage callback
-    }
-
-    /// Unity callback that processes the camera's rendered image.
-    /// This allows us to apply blur effects to the final rendered frame.
-    /// OnRenderImage is called automatically by Unity after the camera renders.
-
-    void OnRenderImage(RenderTexture source, RenderTexture destination)
-    {
-        if (currentLevel < 0.001f || mainCamera == null)
-        {
-            // If level is 0, just pass through unchanged
-            Graphics.Blit(source, destination);
-            return;
-        }
-
-        // Calculate blur intensity based on the pulsing pattern
-        // This syncs the blur with the lamp pulsing
-        float t = timer / flashSpeed;
-        float pulseIntensity = Mathf.Sin(t * Mathf.PI * 2) * 0.5f + 0.5f;
-        pulseIntensity = Mathf.Pow(pulseIntensity, 1.5f);
-
-        // Scale the blur intensity based on the current overstimulation level
-        float currentBlur = currentLevel * maxBlurIntensity * pulseIntensity;
-
-        if (currentBlur > 0.1f) // Only apply blur if intensity is significant
-        {
-            // Create temporary render texture at lower resolution for blur effect
-            // Lower resolution = more blur (downsampling creates a blur-like effect)
-            int downSample = Mathf.RoundToInt(1f + currentBlur * 2f); // 1-3x downsampling based on blur
-            int width = Mathf.Max(1, source.width / downSample);
-            int height = Mathf.Max(1, source.height / downSample);
-
-            RenderTexture blurred = RenderTexture.GetTemporary(width, height, 0);
-
-            // Downsample the source image (creates blur effect)
-            Graphics.Blit(source, blurred);
-
-            // Upscale blurred version back to original resolution
-            Graphics.Blit(blurred, destination);
-
-            RenderTexture.ReleaseTemporary(blurred);
-        }
-        else
-        {
-            // No blur, just pass through
-            Graphics.Blit(source, destination);
+                // Adjust pulse speed based on adaptation multiplier
+                // Higher multiplier (1.2) = faster pulse, lower multiplier (0.8) = slower pulse
+                float adjustedFlashSpeed = flashSpeed / adaptationMultiplier;
+                float t = timer / adjustedFlashSpeed;
+                float pulseIntensity = Mathf.Sin(t * Mathf.PI * 2) * 0.5f + 0.5f;
+                pulseIntensity = Mathf.Pow(pulseIntensity, 1.5f);
+                
+                // Calculate final alpha based on level and pulse
+                float flashAmount = currentLevel * maxFlashIntensity * pulseIntensity;
+                flashAmount = Mathf.Clamp01(flashAmount); // Clamp to 0-1 range
+                
+                // Set material color with vignette texture and calculated alpha
+                vrOverlayMaterial.color = new Color(1, 1, 1, flashAmount);
+                
+                // Ensure quads are active
+                if (vrOverlayQuadLeft != null && !vrOverlayQuadLeft.activeSelf)
+                {
+                    vrOverlayQuadLeft.SetActive(true);
+                }
+                if (vrOverlayQuadRight != null && !vrOverlayQuadRight.activeSelf)
+                {
+                    vrOverlayQuadRight.SetActive(true);
+                }
+            }
+            else
+            {
+                // Fade out when level is 0
+                Color currentColor = vrOverlayMaterial.color;
+                currentColor.a = Mathf.Lerp(currentColor.a, 0, Time.deltaTime * 2f);
+                vrOverlayMaterial.color = currentColor;
+            }
         }
     }
 
     // Creates a radial gradient texture for the vignette effect.
     // The texture is transparent in the center and opaque at the edges.
-
     Texture2D CreateVignetteTexture(int width, int height)
     {
         Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
@@ -208,13 +257,10 @@ public class CameraDisturbance : MonoBehaviour
                 // Normalize distance (0 at center, 1 at corners)
                 float normalizedDistance = distance / maxDistance;
 
-                // Create vignette: 0 at center, 1 at edges
-                // vignetteSize controls how much of the screen is affected
-                // Lower vignetteSize = smaller edge effect
+                // Create vignette: 0 at center, 1 at edges     
                 float alpha = 0f;
                 if (normalizedDistance > (1f - vignetteSize))
                 {
-                    // Only show effect near edges
                     // Map from (1-vignetteSize) to 1.0, creating smooth fade
                     float edgeFactor = (normalizedDistance - (1f - vignetteSize)) / vignetteSize;
                     alpha = Mathf.SmoothStep(0f, 1f, edgeFactor);
@@ -229,9 +275,8 @@ public class CameraDisturbance : MonoBehaviour
         return texture;
     }
 
-    /// Called by OverstimulationController to set the current overstimulation level.
-    /// level: 0.0 = no effects, 1.0 = maximum blur and flash
-    /// The Update() and OnRenderImage() methods will automatically adjust effects based on this level.
+    // Called by OverstimulationController to set the current overstimulation level.
+    // level: 0.0 = no effects, 1.0 = maximum vignette
     public void SetOverstimulationLevel(float level)
     {
         // Store the level (clamp to 0-1 range to be safe)

@@ -1,12 +1,11 @@
 using UnityEngine;
 
-/// TriggerZone creates an area that affects overstimulation when the player enters/exits.
-/// 
-/// HOW IT WORKS:
-/// - Attach this script to a GameObject with a Collider (set as "Is Trigger")
-/// - Choose what happens when player enters: Increase or Decrease
-/// - When player enters: calls OverstimulationController to add/remove triggers
-/// - When player exits: reverses the effect
+// TriggerZone creates an area that affects overstimulation when the player enters/exits.
+// 
+// - Attach this script to a GameObject with a Collider (set as "Is Trigger")
+// - Choose what happens when player enters: Increase or Decrease
+// - When player enters: calls OverstimulationController to add/remove triggers
+// - When player exits: reverses the effect
 public class TriggerZone : MonoBehaviour
 {
     [Header("Zone Settings")]
@@ -25,7 +24,7 @@ public class TriggerZone : MonoBehaviour
     // Reference to the OverstimulationController in the scene
     private OverstimulationController overstimulationController;
 
-    /// Enum to define what type of zone this is
+    // Enum to define what type of zone this is
     public enum ZoneType
     {
         Increase,   // Increases overstimulation (e.g., queue, crowded area)
@@ -40,17 +39,17 @@ public class TriggerZone : MonoBehaviour
 
         if (overstimulationController == null)
         {
-            Debug.LogError($"TriggerZone '{zoneName}': No OverstimulationController found in scene");
+            Debug.LogError($"'{zoneName}': No OverstimulationController found in scene");
         }
 
         Collider col = GetComponent<Collider>();
         if (col != null && !col.isTrigger)
         {
-            Debug.LogWarning($"TriggerZone '{zoneName}': Collider is not set as 'Is Trigger'!");
+            Debug.LogWarning($"'{zoneName}': Collider is not set as 'Is Trigger'");
         }
         else if (col == null)
         {
-            Debug.LogWarning($"TriggerZone '{zoneName}': No Collider component found!");
+            Debug.LogWarning($"'{zoneName}': No Collider  found");
         }
 
         // Check if this zone has a Rigidbody (if not, add one automatically)
@@ -64,8 +63,8 @@ public class TriggerZone : MonoBehaviour
         }
     }
 
-    /// Unity callback: Called when another GameObject with a Collider enters this trigger zone.
-    /// This happens automatically when a collider enters the trigger area.
+    // Unity callback: Called when another GameObject with a Collider enters this trigger zone.
+    // This happens automatically when a collider enters the trigger area.
     void OnTriggerEnter(Collider other)
     {
         // Check if the object that entered is the player
@@ -83,7 +82,7 @@ public class TriggerZone : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogError($"TriggerZone '{zoneName}': OverstimulationController is null!");
+                    Debug.LogError($"'{zoneName}': OverstimulationController is null");
                 }
             }
             else 
@@ -98,8 +97,8 @@ public class TriggerZone : MonoBehaviour
         }
     }
 
-    /// Unity callback: Called when another GameObject with a Collider exits this trigger zone.
-    /// This happens automatically when a collider leaves the trigger area.
+    // Unity callback: Called when another GameObject with a Collider exits this trigger zone.
+    // This happens automatically when a collider leaves the trigger area.
     void OnTriggerExit(Collider other)
     {
         // Check if the object that exited is the player

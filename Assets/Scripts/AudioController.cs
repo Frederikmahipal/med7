@@ -1,8 +1,8 @@
 using UnityEngine;
 
-/// AudioController manages audio for the overstimulation system.
-/// - Background noise: Loops continuously, but gets quieter as stress increases (ducking effect)
-/// - Rising sound: Volume/intensity increases with overstimulation level (takes over)
+// AudioController manages audio for the overstimulation system.
+// - Background noise: Loops continuously, but gets quieter as stress increases (ducking effect)
+// - Rising sound: Volume/intensity increases with overstimulation level (takes over)
 
 public class AudioController : MonoBehaviour
 {
@@ -114,8 +114,8 @@ public class AudioController : MonoBehaviour
                 float targetRisingVolume = Mathf.Lerp(risingMinVolume, risingMaxVolume, overstimulationLevel);
                 
                 // Smoothly move current volume towards target volume
-                // Time.deltaTime = time since last frame (usually ~0.016 seconds)
-                // volumeSmoothing * Time.deltaTime = how fast to move (2.0 * 0.016 = 0.032 = 3.2% per frame)
+                // Time.deltaTime = time since last frame 
+                // volumeSmoothing * Time.deltaTime = how fast to move 
                 // This prevents sudden jumps - volume changes gradually over time
                 currentRisingVolume = Mathf.Lerp(currentRisingVolume, targetRisingVolume, volumeSmoothing * Time.deltaTime);
                 risingAudioSource.volume = currentRisingVolume;

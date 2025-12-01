@@ -1,182 +1,153 @@
 using UnityEngine;
 
-/// OverstimulationController is the main controller for the adaptive overstimulation system.
-/// It tracks a "stress level" from 0.0 (calm) to 1.0 (maximum overstimulation).
-/// All visual effects (lamps, camera blur, etc.) scale based on this level.
-/// 
-/// HOW IT WORKS:
-/// - The level starts at 0.0 (no overstimulation)
-/// - When triggers are active (like being in a queue), the level increases
-/// - When triggers are removed, the level decreases back to 0.0
-/// - All effects automatically scale: 0.0 = normal, 1.0 = maximum intensity
-/// 
-/// This script should be attached to an empty GameObject in the scene.
-
+// OverstimulationController is the central controller that manages the stress level and coordinates all visual/audio effects.
+// Integrates the adaptive system to personalize the experience.
 public class OverstimulationController : MonoBehaviour
 {
     [Header("Overstimulation Level")]
-    [Tooltip("Current stress level: 0.0 = calm, 1.0 = maximum overstimulation. This value changes automatically based on triggers.")]
+    [Tooltip("The core stress value (0.0 to 1.0) that all effects read from")]
     [Range(0f, 1f)]
     public float overstimulationLevel = 0f;
 
+    [Header("Adaptive System (Read-Only)")]
+    [Tooltip("The stress level after applying VR behavior adaptation (visible in Inspector)")]
+    [Range(0f, 1f)]
+    public float adaptedLevel = 0f;
+
+    [Tooltip("Current adaptation multiplier from AdaptationController (visible in Inspector)")]
+    public float currentAdaptationMultiplier = 1.0f;
+
     [Header("Level Change Speed")]
-    [Tooltip("Threshold level (0-1). Below this, level increases FAST. Above this, level increases SLOW. Example: 0.5 = fast until 50%, then slow.")]
+    [Tooltip("Threshold level (0-1). Below this, level increases FAST. Above this, level increases SLOW.")]
     [Range(0f, 1f)]
     public float threshold = 0.5f;
 
-    [Tooltip("FAST increase speed (per second) - used when level is BELOW the threshold. Lower = slower. Example: 0.1 = takes 5 seconds to reach threshold.")]
+    [Tooltip("FAST increase speed (per second) - used when level is BELOW the threshold")]
     public float fastIncreaseSpeed = 0.1f;
 
-    [Tooltip("SLOW increase speed (per second) - used when level is ABOVE the threshold. Lower = slower. Example: 0.05 = takes 10 seconds to go from threshold to max.")]
+    [Tooltip("SLOW increase speed (per second) - used when level is ABOVE the threshold")]
     public float slowIncreaseSpeed = 0.05f;
 
-    [Tooltip("How fast the level decreases when triggers are removed (per second). Lower = slower. Example: 0.1 = takes 10 seconds to go from 1.0 to 0.0.")]
+    [Tooltip("How fast the level decreases when triggers are removed (per second)")]
     public float decreaseSpeed = 0.1f;
 
-    // References to other systems that need to know the level
-    private LampController lampController;
-    private CameraDisturbance cameraDisturbance;
+    [Header("Adaptive Behavior")]
+    [Tooltip("Toggle to enable/disable adaptive behavior")]
+    public bool enableAdaptiveIntensity = true;
 
-    // Tracks how many triggers are currently active
-    // If this is > 0, level increases. If 0, level decreases.
+    private CameraDisturbance cameraDisturbance;
+    private AdaptationController adaptationController;
     private int activeTriggers = 0;
 
     void Start()
     {
-        // Find the LampController so we can tell it about level changes
-        lampController = FindObjectOfType<LampController>();
-        if (lampController == null)
-        {
-            Debug.LogWarning("OverstimulationController: No LampController found in scene! " +
-                           "Make sure you have a GameObject with LampController script in your scene.");
-        }
-
-        // Find the CameraDisturbance so we can tell it about level changes
+        // Auto-creates CameraDisturbance on VR camera if missing
         cameraDisturbance = FindObjectOfType<CameraDisturbance>();
         if (cameraDisturbance == null)
         {
-            // Find the player GameObject by tag (same tag used by TriggerZone)
-            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-            if (playerObj != null)
+            // Searches for camera under "XR Origin" → "Camera Offset"
+            GameObject xrOrigin = GameObject.Find("XR Origin") ?? GameObject.Find("XR Origin (XR Rig)");
+            if (xrOrigin != null)
             {
-                // Get the Camera component from the player
-                Camera playerCamera = playerObj.GetComponent<Camera>();
-                if (playerCamera != null)
+                Camera vrCamera = xrOrigin.GetComponentInChildren<Camera>();
+                if (vrCamera != null)
                 {
-                    // Create CameraDisturbance on the player's camera
-                    cameraDisturbance = playerCamera.gameObject.AddComponent<CameraDisturbance>();
+                    cameraDisturbance = vrCamera.gameObject.AddComponent<CameraDisturbance>();
                 }
+            }
+        }
+
+        // Auto-creates AdaptationController if missing and adaptive system is enabled
+        if (enableAdaptiveIntensity)
+        {
+            adaptationController = FindObjectOfType<AdaptationController>();
+            if (adaptationController == null)
+            {
+                GameObject trackerObj = new GameObject("AdaptationController");
+                adaptationController = trackerObj.AddComponent<AdaptationController>();
             }
         }
     }
 
     void Update()
     {
-        // Update the level based on active triggers
+        // Every frame, updates the stress level and notifies all effects
         UpdateLevel();
-
-        // Tell all systems about the new level
         UpdateAllEffects();
     }
 
-    /// Updates the overstimulation level based on active triggers.
-    /// If triggers are active, level increases (fast before threshold, slow after).
-    /// If not, level decreases.
+    // Increases/decreases the level based on active triggers
     void UpdateLevel()
     {
         if (activeTriggers > 0)
         {
-            // Triggers are active - increase the level
+            // Chooses speed based on whether level is above/below threshold
+            float currentSpeed = overstimulationLevel < threshold ? fastIncreaseSpeed : slowIncreaseSpeed;
             
-            // Choose speed based on whether we're above or below the threshold
-            // Below threshold: use fast speed (quickly builds up initial stress)
-            // Above threshold: use slow speed (slowly builds to maximum - more realistic)
-            float currentSpeed;
-            if (overstimulationLevel < threshold)
-            {
-                // We're below the threshold - increase FAST
-                currentSpeed = fastIncreaseSpeed;
-            }
-            else
-            {
-                // We're above the threshold - increase SLOW
-                currentSpeed = slowIncreaseSpeed;
-            }
-
-            // Increase the level by the chosen speed
-            // Time.deltaTime is the time since last frame (usually ~0.016 seconds)
-            // currentSpeed is how much to add per second
-            // So we add: currentSpeed * Time.deltaTime per frame
+            // Uses Time.deltaTime for frame-rate independent calculations
             overstimulationLevel += currentSpeed * Time.deltaTime;
-
-            // Clamp to maximum of 1.0 (can't go above 100%)
+            
+            // Clamps value to 0.0-1.0 range
             overstimulationLevel = Mathf.Clamp01(overstimulationLevel);
         }
         else
         {
-            // No triggers active - decrease the level back to 0
-            // This always uses the same decrease speed (no threshold for decreasing)
             overstimulationLevel -= decreaseSpeed * Time.deltaTime;
-
-            // Clamp to minimum of 0.0 (can't go below 0%)
             overstimulationLevel = Mathf.Clamp01(overstimulationLevel);
         }
     }
 
-    /// Tells all visual effects about the current level.
-    /// This makes lamps brighter, camera blur stronger, etc. based on the level.
+    // Retrieves adaptation multiplier and applies it to base stress level
     void UpdateAllEffects()
     {
-        // Tell LampController about the current level
-        // It will make lamps brighter based on this value (0.0 = normal, 1.0 = max brightness)
-        lampController?.SetOverstimulationLevel(overstimulationLevel);
+        float adaptationMultiplier = 1.0f;
+        
+        // Retrieves adaptation multiplier from AdaptationController (if enabled)
+        if (enableAdaptiveIntensity && adaptationController != null)
+        {
+            adaptationMultiplier = adaptationController.GetAdaptationMultiplier();
+        }
 
-        // Tell CameraDisturbance about the current level
-        // It will make blur/flash stronger based on this value
+        currentAdaptationMultiplier = adaptationMultiplier;
+
+        // Applies multiplier to base stress level: adaptedLevel = overstimulationLevel × multiplier
+        adaptedLevel = overstimulationLevel * adaptationMultiplier;
+        
+        // Clamps adaptedLevel to 0.0-1.0 range
+        adaptedLevel = Mathf.Clamp01(adaptedLevel);
+
+        // Distributes the adapted level to all visual/audio effect systems
         if (cameraDisturbance != null)
         {
-            cameraDisturbance.SetOverstimulationLevel(overstimulationLevel);
-        }
-        else
-        {
-            // Try to find it again (in case it was created after Start)
-            cameraDisturbance = FindObjectOfType<CameraDisturbance>();
-            
-            // Try to create it if still missing
-            if (cameraDisturbance == null && Time.frameCount % 60 == 0) // Only try once per second
-            {
-                // Find the player GameObject by tag and get its Camera component
-                GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-                if (playerObj != null)
-                {
-                    Camera playerCamera = playerObj.GetComponent<Camera>();
-                    if (playerCamera != null)
-                    {
-                        cameraDisturbance = playerCamera.gameObject.AddComponent<CameraDisturbance>();
-                    }
-                }
-            }
+            cameraDisturbance.SetOverstimulationLevel(adaptedLevel);
         }
     }
 
-    /// Call this when a trigger becomes active (e.g., player enters queue zone).
-    /// Each trigger should have a unique name for debugging.
-    /// Example: AddTrigger("QueueZone") when player enters queue
+    // Public methods for trigger zones to call when player enters/exits
     public void AddTrigger(string triggerName)
     {
         activeTriggers++;
     }
 
-    /// Call this when a trigger becomes inactive (e.g., player leaves queue zone).
     public void RemoveTrigger(string triggerName)
     {
-        activeTriggers = Mathf.Max(0, activeTriggers - 1); // Can't go below 0
+        activeTriggers = Mathf.Max(0, activeTriggers - 1);
     }
 
-    /// Get the current overstimulation level (0.0 to 1.0).
+    // Public method to get the current adapted level (used by AudioController)
+    public float GetAdaptedLevel()
+    {
+        return adaptedLevel;
+    }
+
     public float GetLevel()
     {
         return overstimulationLevel;
     }
-}
 
+    // Public method to get the current adaptation multiplier (used by effects to adjust pulse speed)
+    public float GetAdaptationMultiplier()
+    {
+        return currentAdaptationMultiplier;
+    }
+}
