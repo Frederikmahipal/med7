@@ -14336,12 +14336,6 @@ MonoBehaviour:
   enableLogging: 0
   logInterval: 0.1
   customFileName: 
-  overstimulationController: {fileID: 0}
-  adaptationController: {fileID: 0}
-  csvFilePath: 
-  lastLogTime: 0
-  sessionStartTime: 0
-  isLogging: 0
 --- !u!4 &721873725
 Transform:
   m_ObjectHideFlags: 0
@@ -18483,7 +18477,7 @@ MonoBehaviour:
   m_OriginBaseGameObject: {fileID: 897065113}
   m_CameraFloorOffsetObject: {fileID: 583957351}
   m_RequestedTrackingOriginMode: 0
-  m_CameraYOffset: 0
+  m_CameraYOffset: 1.11
 --- !u!4 &897065116
 Transform:
   m_ObjectHideFlags: 0

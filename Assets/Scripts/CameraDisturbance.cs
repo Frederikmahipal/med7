@@ -81,8 +81,8 @@ public class CameraDisturbance : MonoBehaviour
             mainCamera = vrCamera;
             Debug.LogError($"CameraDisturbance: Using VR camera: {mainCamera.name}, TargetEye={mainCamera.stereoTargetEye}, Near={mainCamera.nearClipPlane}");
             
-            // CRITICAL FIX: Set Near Clip Plane to 0.01 so objects close to camera render
-            // Default is often 0.3 (30cm), which would cull our overlay at 1cm!
+            // Set Near Clip Plane to 0.01 so objects close to camera render
+            // Default is often 0.3 (30cm), which would cull our overlay at 1cm
             if (mainCamera.nearClipPlane > 0.01f)
             {
                 Debug.LogError($"CameraDisturbance: Near Clip Plane was {mainCamera.nearClipPlane}, setting to 0.01 for VR overlay!");
