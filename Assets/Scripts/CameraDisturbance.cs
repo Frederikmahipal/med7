@@ -1,292 +1,171 @@
 using UnityEngine;
+using UnityEngine.Rendering.PostProcessing;
 
-// CameraDisturbance creates a visual vignette overlay effect in VR that syncs with lamp blinking.
-// This simulates overstimulation by adding visual disturbance to the player's view in VR.
-
+// CameraDisturbance drives a real post-processing vignette effect on the VR camera.
+// The built-in Post Processing Stack v2 handles the actual fullscreen effect, while
+// this script maps the adapted overstimulation level to vignette intensity.
 public class CameraDisturbance : MonoBehaviour
 {
-    [Header("Vignette Settings")]
-    [Tooltip("Maximum flash intensity when overstimulation is at 100% (1.0). Lower = less intense.")]
-    public float maxFlashIntensity = 2.0f;
+    [Header("Post-Processing Vignette")]
+    [Tooltip("Minimum vignette intensity when there is no overstimulation.")]
+    [Range(0f, 1f)]
+    public float minIntensity = 0.34f;
 
-    [Tooltip("How fast the flash pulses (in seconds). Should match the lamp pulse speed for synchronization.")]
-    public float flashSpeed = 0.5f;
+    [Tooltip("Maximum vignette intensity at peak overstimulation.")]
+    [Range(0f, 1f)]
+    public float maxIntensity = 0.62f;
 
-    [Tooltip("How much of the screen the vignette covers. Higher = more edge coverage. Range 0-1.")]
-    public float vignetteSize = 0.95f; // Set to 0.95f for very tight vignette, only small center visible 
+    [Tooltip("Border smoothness of the vignette.")]
+    [Range(0.01f, 1f)]
+    public float smoothness = 0.55f;
+
+    [Tooltip("How circular the vignette should be.")]
+    [Range(0f, 1f)]
+    public float roundness = 1f;
+
+    [Tooltip("How quickly the vignette pulses.")]
+    public float flashSpeed = 0.72f;
+
+    [Tooltip("How much the pulse modulates the intensity around the base level.")]
+    [Range(0f, 0.3f)]
+    public float pulseAmount = 0.05f;
 
     private Camera mainCamera;
-    private float currentLevel = 0f; // Current overstimulation level (0.0 to 1.0)
-    private float adaptationMultiplier = 1.0f;
-    private float timer = 0f;
     private OverstimulationController overstimulationController;
-    
-    // VR overlay, quad mesh for each eye
-    private GameObject vrOverlayQuadLeft;
-    private GameObject vrOverlayQuadRight;
-    private Material vrOverlayMaterial;
-    private Texture2D vignetteTexture;
+    private PostProcessLayer postProcessLayer;
+    private PostProcessVolume postProcessVolume;
+    private Vignette vignette;
+    private float currentLevel;
+    private float timer;
 
     void Awake()
     {
-        // Force GameObject to be active if it's inactive
-        if (!gameObject.activeSelf)
-        {
-            gameObject.SetActive(true);
-        }
-        
-        // Force script to be enabled
-        if (!enabled)
-        {
-            enabled = true;
-        }
-    }
-
-    void Start()
-    {
-        // Find OverstimulationController to get adaptation multiplier
         overstimulationController = FindObjectOfType<OverstimulationController>();
+        mainCamera = ResolveCamera();
 
-        Camera[] allCameras = FindObjectsOfType<Camera>();
-        
-        // Log all cameras to verify we find the right one
-        Debug.LogError($"CameraDisturbance: Found {allCameras.Length} camera(s) in scene:");
-        for (int i = 0; i < allCameras.Length; i++)
-        {
-            Camera cam = allCameras[i];
-            string parentName = cam.transform.parent != null ? cam.transform.parent.name : "None";
-            string grandParentName = cam.transform.parent != null && cam.transform.parent.parent != null 
-                ? cam.transform.parent.parent.name : "None";
-            Debug.LogError($"CameraDisturbance: Camera[{i}] - Name={cam.name}, Tag={cam.tag}, Depth={cam.depth}, " +
-                $"TargetEye={cam.stereoTargetEye}, Parent={parentName}, GrandParent={grandParentName}");
-        }
-        
-        // Find the VR camera (the one under XR Origin)
-        Camera vrCamera = null;
-        
-        foreach (Camera cam in allCameras)
-        {
-            // Look for camera with MainCamera tag that has "Camera Offset" as parent
-            if (cam.tag == "MainCamera" && cam.transform.parent != null && 
-                cam.transform.parent.name == "Camera Offset")
-            {
-                vrCamera = cam;
-                Debug.LogError($"CameraDisturbance: Found VR camera! Name={cam.name}, Tag={cam.tag}, Parent={cam.transform.parent.name}, TargetEye={cam.stereoTargetEye}, Depth={cam.depth}, Near={cam.nearClipPlane}");
-                break;
-            }
-        }
-        
-        if (vrCamera != null)
-        {
-            mainCamera = vrCamera;
-            Debug.LogError($"CameraDisturbance: Using VR camera: {mainCamera.name}, TargetEye={mainCamera.stereoTargetEye}, Near={mainCamera.nearClipPlane}");
-            
-            // Set Near Clip Plane to 0.01 so objects close to camera render
-            // Default is often 0.3 (30cm), which would cull our overlay at 1cm
-            if (mainCamera.nearClipPlane > 0.01f)
-            {
-                Debug.LogError($"CameraDisturbance: Near Clip Plane was {mainCamera.nearClipPlane}, setting to 0.01 for VR overlay!");
-                mainCamera.nearClipPlane = 0.01f;
-            }
-        }
-        else
-        {
-            // Fallback to camera on this GameObject
-            mainCamera = GetComponent<Camera>();
-            string fallbackName = mainCamera != null ? mainCamera.name : "NULL";
-            Debug.LogError($"CameraDisturbance: VR camera not found! Using fallback camera: {fallbackName}");
-        }
-        
         if (mainCamera == null)
         {
-            Debug.LogError($"CameraDisturbance: No Camera component found! GameObject={gameObject.name}");
+            Debug.LogError("CameraDisturbance: Could not find a VR camera.");
             enabled = false;
             return;
         }
-        
-        // Create VR overlay
-        Debug.LogError($"CameraDisturbance: Creating VR overlay, Camera={mainCamera.name}");
-        CreateVROverlayForBothEyes();
-    }
 
-    // Creates VR overlay - separate quad mesh for each eye
-    void CreateVROverlayForBothEyes()
-    {
-        // Create vignette texture
-        vignetteTexture = CreateVignetteTexture(512, 512);
-        
-        // Find Shader
-        Shader shader = Shader.Find("Unlit/Transparent");
-        if (shader == null) shader = Shader.Find("UI/Unlit/Transparent");
-        if (shader == null) shader = Shader.Find("Sprites/Default");
-        
-        if (shader == null)
+        if (!SetUpPostProcessing())
         {
+            Debug.LogError("CameraDisturbance: Failed to create post-processing vignette.");
+            enabled = false;
             return;
         }
-        
-        // Setup Material
-        vrOverlayMaterial = new Material(shader);
-        vrOverlayMaterial.mainTexture = vignetteTexture;
-        vrOverlayMaterial.color = new Color(1, 1, 1, 0f); 
-        
-        //  Force material to render on top of everything
-        vrOverlayMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        vrOverlayMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        vrOverlayMaterial.SetInt("_ZWrite", 0); 
-        vrOverlayMaterial.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always); // Always draw on top
-        vrOverlayMaterial.renderQueue = 5000; // Overlay queue (renders very late)
-        
-        // Calculate distance and scale
-        float distance = 0.35f; 
-        
-        float fov = mainCamera.fieldOfView * Mathf.Deg2Rad;
-        // Multiply by 1.5f to ensure edges are fully covered even if eyes rotate slightly
-        float width = 2f * distance * Mathf.Tan(fov / 2f) * 1.5f; 
-        float height = width * (mainCamera.pixelHeight / (float)mainCamera.pixelWidth);
-        
-        Vector3 quadScale = new Vector3(width, height, 1f);
-        
-        // Create quad for left eye
-        vrOverlayQuadLeft = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        vrOverlayQuadLeft.name = "VROverlayQuad_LeftEye";
-        vrOverlayQuadLeft.transform.SetParent(mainCamera.transform, false);
-        vrOverlayQuadLeft.transform.localPosition = new Vector3(0, 0, distance); 
-        vrOverlayQuadLeft.transform.localRotation = Quaternion.identity;
-        vrOverlayQuadLeft.transform.localScale = quadScale;
-        
-        // Setup Renderer (Left)
-        ConfigureQuadRenderer(vrOverlayQuadLeft);
 
-        // Create quad for right eye
-        vrOverlayQuadRight = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        vrOverlayQuadRight.name = "VROverlayQuad_RightEye";
-        vrOverlayQuadRight.transform.SetParent(mainCamera.transform, false);
-        vrOverlayQuadRight.transform.localPosition = new Vector3(0, 0, distance);
-        vrOverlayQuadRight.transform.localRotation = Quaternion.identity;
-        vrOverlayQuadRight.transform.localScale = quadScale;
-        
-        // Setup Renderer (Right)
-        ConfigureQuadRenderer(vrOverlayQuadRight);
-        
-        Debug.Log($"CameraDisturbance: VR overlay created! Dist={distance}, Scale={quadScale}");
-    }
-
-    // Helper function to avoid code duplication
-    void ConfigureQuadRenderer(GameObject quad)
-    {
-        MeshRenderer meshRenderer = quad.GetComponent<MeshRenderer>();
-        meshRenderer.material = vrOverlayMaterial;
-        quad.layer = mainCamera.gameObject.layer;
-        quad.SetActive(true);
-        meshRenderer.enabled = true;
-        meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        meshRenderer.receiveShadows = false;
-        if(quad.GetComponent<Collider>()) Destroy(quad.GetComponent<Collider>());
+        Debug.Log("CameraDisturbance: Post-processing vignette initialized.");
     }
 
     void Update()
     {
-        // VR: Update material color for vignette effect
-        if (vrOverlayMaterial != null)
+        if (vignette == null)
+            return;
+
+        float adaptationMultiplier = 1.0f;
+        if (overstimulationController != null)
+            adaptationMultiplier = Mathf.Max(0.01f, overstimulationController.GetAdaptationMultiplier());
+
+        float baseVisualLevel = Mathf.SmoothStep(0f, 1f, currentLevel);
+        float pulseContribution = 0f;
+
+        if (currentLevel > 0.001f)
         {
-            // Calculate vignette intensity based on overstimulation level
-            if (currentLevel > 0.001f)
-            {
-                // Get adaptation multiplier to adjust pulse speed
-                if (overstimulationController != null)
-                {
-                    adaptationMultiplier = overstimulationController.GetAdaptationMultiplier();
-                }
-
-                // Calculate pulse intensity
-                timer += Time.deltaTime;
-
-                // Adjust pulse speed based on adaptation multiplier
-                // Higher multiplier (1.2) = faster pulse, lower multiplier (0.8) = slower pulse
-                float adjustedFlashSpeed = flashSpeed / adaptationMultiplier;
-                float t = timer / adjustedFlashSpeed;
-                float pulseIntensity = Mathf.Sin(t * Mathf.PI * 2) * 0.5f + 0.5f;
-                pulseIntensity = Mathf.Pow(pulseIntensity, 1.5f);
-                
-                // Calculate final alpha based on level and pulse
-                float flashAmount = currentLevel * maxFlashIntensity * pulseIntensity;
-                flashAmount = Mathf.Clamp01(flashAmount); // Clamp to 0-1 range
-                
-                // Set material color with vignette texture and calculated alpha
-                vrOverlayMaterial.color = new Color(1, 1, 1, flashAmount);
-                
-                // Ensure quads are active
-                if (vrOverlayQuadLeft != null && !vrOverlayQuadLeft.activeSelf)
-                {
-                    vrOverlayQuadLeft.SetActive(true);
-                }
-                if (vrOverlayQuadRight != null && !vrOverlayQuadRight.activeSelf)
-                {
-                    vrOverlayQuadRight.SetActive(true);
-                }
-            }
-            else
-            {
-                // Fade out when level is 0
-                Color currentColor = vrOverlayMaterial.color;
-                currentColor.a = Mathf.Lerp(currentColor.a, 0, Time.deltaTime * 2f);
-                vrOverlayMaterial.color = currentColor;
-            }
+            timer += Time.deltaTime;
+            float adjustedFlashSpeed = Mathf.Lerp(flashSpeed, flashSpeed * 0.65f, baseVisualLevel) / adaptationMultiplier;
+            float pulse = Mathf.Sin((timer / adjustedFlashSpeed) * Mathf.PI * 2f) * 0.5f + 0.5f;
+            pulse = pulse * pulse * (3f - 2f * pulse);
+            pulseContribution = pulseAmount * baseVisualLevel * pulse;
         }
+
+        float baseIntensity = Mathf.Lerp(minIntensity, maxIntensity, baseVisualLevel);
+        vignette.intensity.value = Mathf.Clamp01(baseIntensity + pulseContribution);
+        vignette.smoothness.value = Mathf.Lerp(smoothness, 0.68f, baseVisualLevel);
+        vignette.roundness.value = roundness;
+        vignette.color.value = Color.black;
+        vignette.rounded.value = true;
+        vignette.center.value = new Vector2(0.5f, 0.5f);
     }
 
-    // Creates a radial gradient texture for the vignette effect.
-    // The texture is transparent in the center and opaque at the edges.
-    Texture2D CreateVignetteTexture(int width, int height)
+    void OnDestroy()
     {
-        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-
-        Vector2 center = new Vector2(width / 2f, height / 2f);
-        float maxDistance = Mathf.Sqrt(center.x * center.x + center.y * center.y);
-
-        // Create radial gradient: transparent in center, opaque at edges
-        for (int y = 0; y < height; y++)
+        if (postProcessVolume != null)
         {
-            for (int x = 0; x < width; x++)
-            {
-                // Calculate distance from center
-                Vector2 pos = new Vector2(x, y);
-                float distance = Vector2.Distance(pos, center);
-
-                // Normalize distance (0 at center, 1 at corners)
-                float normalizedDistance = distance / maxDistance;
-
-                // Create vignette: 0 at center, 1 at edges     
-                float alpha = 0f;
-                if (normalizedDistance > (1f - vignetteSize))
-                {
-                    // Map from (1-vignetteSize) to 1.0, creating smooth fade
-                    float edgeFactor = (normalizedDistance - (1f - vignetteSize)) / vignetteSize;
-                    alpha = Mathf.SmoothStep(0f, 1f, edgeFactor);
-                }
-
-                // White color with calculated alpha
-                texture.SetPixel(x, y, new Color(1, 1, 1, alpha));
-            }
+            RuntimeUtilities.DestroyVolume(postProcessVolume, true, true);
+            postProcessVolume = null;
         }
-
-        texture.Apply();
-        return texture;
     }
 
-    // Called by OverstimulationController to set the current overstimulation level.
-    // level: 0.0 = no effects, 1.0 = maximum vignette
+    Camera ResolveCamera()
+    {
+        Camera attachedCamera = GetComponent<Camera>();
+        if (attachedCamera != null)
+            return attachedCamera;
+
+        GameObject xrOrigin = GameObject.Find("XR Origin") ?? GameObject.Find("XR Origin (XR Rig)");
+        if (xrOrigin != null)
+        {
+            Camera xrCamera = xrOrigin.GetComponentInChildren<Camera>();
+            if (xrCamera != null)
+                return xrCamera;
+        }
+
+        return Camera.main;
+    }
+
+    bool SetUpPostProcessing()
+    {
+        PostProcessResources resources = Resources.Load<PostProcessResources>("PostProcessResources");
+        if (resources == null)
+        {
+            Debug.LogError("CameraDisturbance: Resources/PostProcessResources.asset is missing.");
+            return false;
+        }
+
+        // Force the VR camera down the render-texture path so fullscreen post effects
+        // actually get a target to run on in the built-in pipeline on Quest.
+        mainCamera.forceIntoRenderTexture = true;
+        mainCamera.allowHDR = true;
+
+        postProcessLayer = mainCamera.GetComponent<PostProcessLayer>();
+        if (postProcessLayer == null)
+            postProcessLayer = mainCamera.gameObject.AddComponent<PostProcessLayer>();
+
+        int postProcessingLayer = LayerMask.NameToLayer("PostProcessing");
+        if (postProcessingLayer < 0)
+            postProcessingLayer = mainCamera.gameObject.layer;
+
+        postProcessLayer.volumeTrigger = null;
+        postProcessLayer.volumeLayer = 1 << postProcessingLayer;
+        postProcessLayer.antialiasingMode = PostProcessLayer.Antialiasing.None;
+        postProcessLayer.stopNaNPropagation = true;
+        postProcessLayer.finalBlitToCameraTarget = false;
+        postProcessLayer.Init(resources);
+
+        vignette = ScriptableObject.CreateInstance<Vignette>();
+        vignette.enabled.Override(true);
+        vignette.mode.Override(VignetteMode.Classic);
+        vignette.color.Override(Color.black);
+        vignette.center.Override(new Vector2(0.5f, 0.5f));
+        vignette.intensity.Override(minIntensity);
+        vignette.smoothness.Override(smoothness);
+        vignette.roundness.Override(roundness);
+        vignette.rounded.Override(true);
+
+        postProcessVolume = PostProcessManager.instance.QuickVolume(postProcessingLayer, 100f, vignette);
+        postProcessVolume.isGlobal = true;
+        postProcessVolume.priority = 100f;
+
+        return true;
+    }
+
     public void SetOverstimulationLevel(float level)
     {
-        // Store the level (clamp to 0-1 range to be safe)
         currentLevel = Mathf.Clamp01(level);
-
-        // Reset timer when level reaches 0 so it starts fresh next time
         if (currentLevel < 0.001f)
-        {
             timer = 0f;
-        }
     }
 }
-

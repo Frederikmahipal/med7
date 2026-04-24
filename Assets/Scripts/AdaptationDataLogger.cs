@@ -32,20 +32,14 @@ public class AdaptationDataLogger : MonoBehaviour
     void Start()
     {
         // Find required components
-        overstimulationController = FindObjectOfType<OverstimulationController>();
+        RefreshReferences();
         if (overstimulationController == null)
         {
             Debug.LogWarning("No OverstimulationController found");
             enableLogging = false;
             return;
         }
-        
-        adaptationController = FindObjectOfType<AdaptationController>();
-        if (adaptationController == null && overstimulationController.enableAdaptiveIntensity)
-        {
-            Debug.LogWarning("No AdaptationController");
-        }
-        
+
         // Initialize logging if enabled
         if (enableLogging)
         {
@@ -55,6 +49,8 @@ public class AdaptationDataLogger : MonoBehaviour
     
     void Update()
     {
+        RefreshReferences();
+
         // Check if logging was enabled/disabled in Inspector
         if (enableLogging && !isLogging)
         {
@@ -76,11 +72,9 @@ public class AdaptationDataLogger : MonoBehaviour
     void StartLogging()
     {
         if (isLogging) return; // Already logging
-        
-        // create Data folder if it doesn't exist
-        string projectRoot = Path.GetDirectoryName(Application.dataPath);
 
-        string dataDir = Path.Combine(projectRoot, "Data");
+        // Use Unity's persistent path so logging works both in the editor and on Quest/Android builds.
+        string dataDir = Path.Combine(Application.persistentDataPath, "Data");
         if (!Directory.Exists(dataDir))
         {
             Directory.CreateDirectory(dataDir);
@@ -115,7 +109,9 @@ public class AdaptationDataLogger : MonoBehaviour
     void LogData()
     {
         if (csvWriter == null || !isLogging) return;
-        
+
+        RefreshReferences();
+
         // Get data
         float time = Time.time - sessionStartTime;
         float overstimLevel = overstimulationController != null ? overstimulationController.GetLevel() : 0f;
@@ -129,7 +125,7 @@ public class AdaptationDataLogger : MonoBehaviour
         if (overstimulationController != null)
         {
             adaptationMultiplier = overstimulationController.currentAdaptationMultiplier;
-           // activeTriggers = overstimulationController.GetActiveTriggersCount();
+            activeTriggers = overstimulationController.GetActiveTriggersCount();
         }
         
         // Get adaptive data from AdaptationController for rotation speed and discomfort
@@ -142,6 +138,24 @@ public class AdaptationDataLogger : MonoBehaviour
         // Write CSV line
         csvWriter.WriteLine($"{time:F3},{overstimLevel:F4},{adaptedLevel:F4},{adaptationMultiplier:F4},{headRotationSpeed:F2},{discomfortLevel:F4},{activeTriggers}");
         csvWriter.Flush(); // Ensure data is written immediately
+    }
+
+    void RefreshReferences()
+    {
+        if (overstimulationController == null)
+        {
+            overstimulationController = FindObjectOfType<OverstimulationController>();
+        }
+
+        if (adaptationController == null)
+        {
+            adaptationController = FindObjectOfType<AdaptationController>();
+            if (adaptationController == null && overstimulationController != null && overstimulationController.enableAdaptiveIntensity)
+            {
+                // OverstimulationController may auto-create this after Start, so we keep retrying.
+                return;
+            }
+        }
     }
     
     void StopLogging()
@@ -169,4 +183,3 @@ public class AdaptationDataLogger : MonoBehaviour
     }
     
 }
-

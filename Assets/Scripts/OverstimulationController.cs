@@ -39,24 +39,25 @@ public class OverstimulationController : MonoBehaviour
     private AdaptationController adaptationController;
     private int activeTriggers = 0;
 
+    void Awake()
+    {
+        Camera vrCamera = ResolveVRCamera();
+
+        // Always bind the disturbance effect to the XR camera specifically.
+        if (vrCamera != null)
+        {
+            cameraDisturbance = vrCamera.GetComponent<CameraDisturbance>();
+            if (cameraDisturbance == null)
+            {
+                cameraDisturbance = vrCamera.gameObject.AddComponent<CameraDisturbance>();
+            }
+
+            Debug.Log($"OverstimulationController: Bound CameraDisturbance to XR camera '{vrCamera.name}'.");
+        }
+    }
+
     void Start()
     {
-        // Auto-creates CameraDisturbance on VR camera if missing
-        cameraDisturbance = FindObjectOfType<CameraDisturbance>();
-        if (cameraDisturbance == null)
-        {
-            // Searches for camera under "XR Origin" → "Camera Offset"
-            GameObject xrOrigin = GameObject.Find("XR Origin") ?? GameObject.Find("XR Origin (XR Rig)");
-            if (xrOrigin != null)
-            {
-                Camera vrCamera = xrOrigin.GetComponentInChildren<Camera>();
-                if (vrCamera != null)
-                {
-                    cameraDisturbance = vrCamera.gameObject.AddComponent<CameraDisturbance>();
-                }
-            }
-        }
-
         // Auto-creates AdaptationController if missing and adaptive system is enabled
         if (enableAdaptiveIntensity)
         {
@@ -67,6 +68,15 @@ public class OverstimulationController : MonoBehaviour
                 adaptationController = trackerObj.AddComponent<AdaptationController>();
             }
         }
+    }
+
+    Camera ResolveVRCamera()
+    {
+        GameObject xrOrigin = GameObject.Find("XR Origin") ?? GameObject.Find("XR Origin (XR Rig)");
+        if (xrOrigin == null)
+            return null;
+
+        return xrOrigin.GetComponentInChildren<Camera>();
     }
 
     void Update()
@@ -143,6 +153,11 @@ public class OverstimulationController : MonoBehaviour
     public float GetLevel()
     {
         return overstimulationLevel;
+    }
+
+    public int GetActiveTriggersCount()
+    {
+        return activeTriggers;
     }
 
     // Public method to get the current adaptation multiplier (used by effects to adjust pulse speed)

@@ -46,35 +46,35 @@ public class AdaptationController : MonoBehaviour
     private float currentAvgRotationSpeed = 0f;
     private float currentDiscomfortLevel = 0f;
     
-    void Start()
+void Start()
+{
+    // Prefer the XR rig camera explicitly so duplicate legacy cameras do not hijack tracking.
+    GameObject xrOrigin = GameObject.Find("XR Origin") ?? GameObject.Find("XR Origin (XR Rig)");
+    if (xrOrigin != null)
     {
-        // Find camera/head transform
+        Camera xrCamera = xrOrigin.GetComponentInChildren<Camera>();
+        if (xrCamera != null)
+            headTransform = xrCamera.transform;
+    }
+
+    if (headTransform == null)
+    {
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null)
         {
             Camera playerCamera = playerObj.GetComponentInChildren<Camera>();
             headTransform = playerCamera != null ? playerCamera.transform : playerObj.transform;
         }
-        else
+    }
+
+    if (headTransform == null)
+    {
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
         {
-            Camera mainCam = Camera.main;
-            if (mainCam != null)
-            {
-                headTransform = mainCam.transform;
-            }
-            else
-            {
-                GameObject xrOrigin = GameObject.Find("XR Origin");
-                if (xrOrigin != null)
-                {
-                    Camera xrCamera = xrOrigin.GetComponentInChildren<Camera>();
-                    if (xrCamera != null)
-                    {
-                        headTransform = xrCamera.transform;
-                    }
-                }
-            }
+            headTransform = mainCam.transform;
         }
+    }
         
         if (headTransform == null)
         {

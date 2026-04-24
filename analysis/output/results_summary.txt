@@ -1,0 +1,19 @@
+RQ: Can a head-motion-based proxy mechanism produce a stable and bounded real-time adaptive intensity system on standalone VR hardware?
+
+Results summary based on the active phase only (ActiveTriggers > 0):
+
+H1 (Accumulation):
+- In the still condition, the mean non-negative first-derivative ratio of Ladapted was 1.000.
+- Mean head rotation speed in the still condition was 0.90 deg/s.
+- Mean adaptation multiplier in the still condition was 1.2000.
+
+H2 (Safety bounding):
+- In the rapid condition, mean head rotation speed was 136.55 deg/s.
+- Mean adaptation multiplier in the rapid condition was 0.8785.
+- Mean adapted-below-base ratio in the rapid regime was 0.983.
+
+H3 (Stability and boundedness):
+- Overstimulation bound violations: 0
+- Adapted level bound violations: 0
+- Multiplier bound violations: 0
+- Maximum observed sign changes in a 1-second window: 2

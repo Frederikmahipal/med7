@@ -14333,7 +14333,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5b5461e7dca74b58827e0e5cf519d73, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  enableLogging: 0
+  enableLogging: 1
   logInterval: 0.1
   customFileName: 
 --- !u!4 &721873725
@@ -18604,7 +18604,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3cc2d1385a6dc4bdbb32176ac936e8bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxLampsInFocus: 3
 --- !u!4 &904259361
 Transform:
   m_ObjectHideFlags: 0
@@ -28703,12 +28702,12 @@ GameObject:
   - component: {fileID: 1335993152}
   - component: {fileID: 1335993154}
   m_Layer: 0
-  m_Name: Main Camera
-  m_TagString: Player
+  m_Name: Legacy Desktop Camera
+  m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!81 &1335993148
 AudioListener:
   m_ObjectHideFlags: 0
