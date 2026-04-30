@@ -6,6 +6,10 @@ using UnityEngine.Rendering.PostProcessing;
 // this script maps the adapted overstimulation level to vignette intensity.
 public class CameraDisturbance : MonoBehaviour
 {
+    private const float MinAdaptationMultiplier = 0.8f;
+    private const float MaxAdaptationMultiplier = 1.2f;
+    private const float PulseResponseSpeed = 3f;
+
     [Header("Post-Processing Vignette")]
     [Tooltip("Minimum vignette intensity when there is no overstimulation.")]
     [Range(0f, 1f)]
@@ -36,7 +40,9 @@ public class CameraDisturbance : MonoBehaviour
     private PostProcessVolume postProcessVolume;
     private Vignette vignette;
     private float currentLevel;
-    private float timer;
+    private float pulsePhase;
+    private float smoothedFlashSpeed;
+    private float smoothedPulseAmount;
 
     void Awake()
     {
@@ -57,6 +63,9 @@ public class CameraDisturbance : MonoBehaviour
             return;
         }
 
+        smoothedFlashSpeed = flashSpeed;
+        smoothedPulseAmount = pulseAmount;
+
         Debug.Log("CameraDisturbance: Post-processing vignette initialized.");
     }
 
@@ -70,15 +79,24 @@ public class CameraDisturbance : MonoBehaviour
             adaptationMultiplier = Mathf.Max(0.01f, overstimulationController.GetAdaptationMultiplier());
 
         float baseVisualLevel = Mathf.SmoothStep(0f, 1f, currentLevel);
+        float normalizedAdaptation = Mathf.InverseLerp(MinAdaptationMultiplier, MaxAdaptationMultiplier, adaptationMultiplier);
         float pulseContribution = 0f;
 
         if (currentLevel > 0.001f)
         {
-            timer += Time.deltaTime;
-            float adjustedFlashSpeed = Mathf.Lerp(flashSpeed, flashSpeed * 0.65f, baseVisualLevel) / adaptationMultiplier;
-            float pulse = Mathf.Sin((timer / adjustedFlashSpeed) * Mathf.PI * 2f) * 0.5f + 0.5f;
+            // Keep the rhythm readable in VR while still making calm users feel a faster,
+            // stronger pulse and uncomfortable users feel a slower, softer one.
+            float adaptedFlashSpeed = Mathf.Lerp(flashSpeed * 1.2f, flashSpeed * 0.78f, normalizedAdaptation);
+            float targetFlashSpeed = Mathf.Lerp(adaptedFlashSpeed, adaptedFlashSpeed * 0.72f, baseVisualLevel);
+            float targetPulseAmount = pulseAmount * Mathf.Lerp(0.7f, 1.2f, normalizedAdaptation);
+
+            smoothedFlashSpeed = Mathf.Lerp(smoothedFlashSpeed, targetFlashSpeed, PulseResponseSpeed * Time.deltaTime);
+            smoothedPulseAmount = Mathf.Lerp(smoothedPulseAmount, targetPulseAmount, PulseResponseSpeed * Time.deltaTime);
+
+            pulsePhase += Time.deltaTime / Mathf.Max(0.01f, smoothedFlashSpeed);
+            float pulse = Mathf.Sin(pulsePhase * Mathf.PI * 2f) * 0.5f + 0.5f;
             pulse = pulse * pulse * (3f - 2f * pulse);
-            pulseContribution = pulseAmount * baseVisualLevel * pulse;
+            pulseContribution = smoothedPulseAmount * baseVisualLevel * pulse;
         }
 
         float baseIntensity = Mathf.Lerp(minIntensity, maxIntensity, baseVisualLevel);
@@ -166,6 +184,10 @@ public class CameraDisturbance : MonoBehaviour
     {
         currentLevel = Mathf.Clamp01(level);
         if (currentLevel < 0.001f)
-            timer = 0f;
+        {
+            pulsePhase = 0f;
+            smoothedFlashSpeed = flashSpeed;
+            smoothedPulseAmount = pulseAmount;
+        }
     }
 }
